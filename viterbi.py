@@ -121,6 +121,7 @@ class Context:
         self.t0 = deepcopy(self.map)
         i = 0; j = 0
         self.emission_matrix(0)
+        print(self.em)
         for row in self.t0:
             for col in row:
                 if col == '0':
@@ -182,7 +183,6 @@ class Context:
     
     # Generate an emission matrix of 
     def emission_matrix(self, t):
-        er = self.error_rate
         em_mat = np.ndarray([int(self.dim[0]), int(self.dim[1])], dtype=float) # float
         em_mat = em_mat.tolist()
         # [(1-error)^(4 - d_it)] * error^(d_it)
@@ -198,11 +198,15 @@ class Context:
                         continue
                     else:
                         d_it += 1
+                print(d_it)        
                 sensor_correct_prob = (1-self.error_rate) ** (4 - d_it)
                 directional_error_rate = self.error_rate ** d_it
+                print(str(sensor_correct_prob) + ' ' + str(directional_error_rate))
                 em_mat[i][j] = sensor_correct_prob * directional_error_rate
+                print(em_mat[i][j])
                 j += 1
             j = 0; i += 1
+        print(em_mat)
         self.em = em_mat
         return
 
@@ -233,7 +237,7 @@ def main():
         # trellis[i,1] assigned initial_p[i] * Emissions[i][y[0]]
 
     # 
-    view = 0
+    view = 2 
     if view == 1:
         for row in range(len(m.map)):
             for col in range(len(m.map[0])):
