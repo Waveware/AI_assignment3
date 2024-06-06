@@ -167,7 +167,10 @@ class Context:
         i = 0
         for row in transition_mat:
             s = sum(row)
-            transition_mat[i] = [j/s for j in transition_mat[i]]
+            if s > 0:
+                transition_mat[i] = [j/s for j in transition_mat[i]]
+            else:
+                transition_mat[i] = 0.0
             i += 1
         self.tm = transition_mat
         return 
