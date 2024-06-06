@@ -46,11 +46,12 @@ class Context:
         print('Dimensions: ' + str(self.map_dimensions))
         for row in self.map:
             print(row)
-        print('Sensor Observations Count: ' + str(len(self.obs)))
+        print('Sensor Observations Count: NSWE' + str(len(self.obs)))
         for observe in self.obs:
             print(observe)
         print('Error rate: '+ str(self.error_rate))
-        
+
+
 
 def main():
 ##### Take input
