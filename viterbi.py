@@ -53,9 +53,11 @@ def sensor_model(map_data, pos, reading, epsilon):
         (c - 1 < 0 or map_data[r][c - 1] != '0'),
         (c + 1 >= len(map_data[0]) or map_data[r][c + 1] != '0')
     ]
-    reading_obstacles = [d in reading for d in directions]
-    d_it = sum(1 for a, b in zip(actual_obstacles, reading_obstacles) if a != b)
-    return (1 - epsilon) ** (4 - d_it) * epsilon ** d_it
+    d_it = 0
+    for i in range(4):
+        if int(reading[i]) != int(actual_obstacles[i]):
+            d_it += 1
+    return ((1 - epsilon) ** (4 - d_it)) * (epsilon ** d_it)
 
 def viterbi(map_data, observations, epsilon):
     traversable_positions = get_traversable_positions(map_data)
@@ -94,13 +96,15 @@ def save_trellis(trellis):
     np.savez("output.npz", *maps)
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: python viterbi.py [input]")
-        sys.exit(1)
-    
     input_file = sys.argv[1]
     map_data, observations, epsilon = read_input(input_file)
     trellis = viterbi(map_data, observations, epsilon)
+    print('Map: ')
+    for r in map_data:
+        print(r)
+    print('Observations:')
+    for o in observations:
+        print(o)
     save_trellis(trellis)
 
 if __name__ == "__main__":
