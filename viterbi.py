@@ -121,11 +121,10 @@ class Context:
         self.t0 = deepcopy(self.map)
         i = 0; j = 0
         self.emission_matrix(0)
-        print(self.em)
         for row in self.t0:
             for col in row:
                 if col == '0':
-                    self.t0[i][j] = ( 1.0/k_initial ) * self.em[i][j]
+                    self.t0[i][j] = ( 1.0/k_initial ) * self.em[0][i][j]
                 else:
                     self.t0[i][j] = 0.0
                 j += 1
@@ -142,37 +141,32 @@ class Context:
             valid_move[n] = valid_move[n]/total
         return valid_move
 
-
-
     # Generate a transition matrix of size K x K
     def transition_matrix(self):
-        i = 0; 
-        k = []
+        i = 0; k = []
         for row in self.map:
             j = 0
             for col in row:
                 if self.map[i][j] == '0':
-
                     k.append([i, j])
                 j += 1
             i += 1
-        self.traversable = k
-        transition_mat = []
+
+        self.traversable = k; transition_mat = []
         for from_pos in k:
             this_transition = []
             for to_pos in k:
                 this_transition.append(is_adjacent(from_pos[0], from_pos[1], to_pos[0], to_pos[1]))
-            s = sum(this_transition)
+            s = sum(this_transition); f = 0
+            for t in this_transition:
+                if s > 0:
+                    this_transition[f] /= s
+                else:
+                    this_transition[f] = 0
+                f += 1
+            print(this_transition)
             transition_mat.append(this_transition)
         
-        i = 0
-        for row in transition_mat:
-            s = sum(row)
-            if s > 0:
-                transition_mat[i] = [j/s for j in transition_mat[i]]
-            else:
-                transition_mat[i] = 0.0
-            i += 1
         self.tm = transition_mat
         return 
     
@@ -198,16 +192,12 @@ class Context:
                         continue
                     else:
                         d_it += 1
-                print(d_it)        
                 sensor_correct_prob = (1-self.error_rate) ** (4 - d_it)
-                directional_error_rate = self.error_rate ** d_it
-                print(str(sensor_correct_prob) + ' ' + str(directional_error_rate))
+                directional_error_rate = self.error_rate ** (d_it)
                 em_mat[i][j] = sensor_correct_prob * directional_error_rate
-                print(em_mat[i][j])
                 j += 1
             j = 0; i += 1
-        print(em_mat)
-        self.em = em_mat
+        self.em.append(em_mat) 
         return
 
     def print(self) -> None:
@@ -230,37 +220,28 @@ def main():
     m.parse(input)
     m.print()
 
-##### Take Input 
-
-# Initialise empty Trellis matrix of expected size
-    # for each position i = 1,2,...,K
-        # trellis[i,1] assigned initial_p[i] * Emissions[i][y[0]]
-
-    # 
-    view = 2 
+    view = 2
     if view == 1:
         for row in range(len(m.map)):
             for col in range(len(m.map[0])):
                 print(m.neighbours(row, col), end=' ')
             print('')
 
-
-    # calculate the initial probabilities
-    # trellis at 0
-    m.initial_probabilities() # also generates em at t=0
+    m.initial_probabilities()
     if view == 2:
         for i in range(int(m.dim[0])):
             print(m.t0[i])
-    
+
     m.transition_matrix()
-    # trellis at every other observations
     # trellis[s,t] = trellis[k, t-1] * transition[k,i] * emission[i, observation at t]
     
     trellis = [m.t0]
-    print(m.t0)
     max_p, pos_max = find_max(m.t0)
-    print(max_p)
-    print(pos_max)
+
+    print("Shape of t0: " + str(np.shape(trellis)))
+    print("Shape of em: " + str(np.shape(m.em)))
+    print("Shape of tm: " + str(np.shape(m.tm)))
+    print(m.tm)
 
     time = 1
     for observation in range(len(m.obs) - 1):
@@ -272,8 +253,10 @@ def main():
         for row in range(int(m.dim[0])):
             row_trellis = []
             for col in range(int(m.dim[1])):
+                #print('=========== ' + str(row) + ' ' + str(col)  + ' ===========')
                 tindex = m.get_transition(row, col)
-                eq = max_p * transition[tindex] * m.em[row][col]
+                #print(str(tindex) + ': ' +str(transition[tindex]))
+                eq = max_p * transition[tindex] * m.em[time][row][col]
                 
                 row_trellis.append(eq)
             next_trellis.append(row_trellis)   
@@ -283,6 +266,7 @@ def main():
     ar = 0
     for array in trellis:
         trellis[ar] = np.matrix(array)
+        print('TIME STAMP: ' + str(ar))
         ar += 1
     
     np.savez("output.npz", *trellis)
