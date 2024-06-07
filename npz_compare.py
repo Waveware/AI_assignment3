@@ -1,48 +1,38 @@
-import sys
 import numpy as np
-import viterbi
 
+def load_trellis(file_path):
+    try:
+        data = np.load(file_path)
+        trellis = [data[key] for key in data.files]
+        return trellis
+    except Exception as e:
+        print("Error loading trellis matrix:", e)
+        return None
 
-def compare_npz(file_path1, file_path2):
-    file1 = np.load(file_path1,allow_pickle=True)
-    file2 = np.load(file_path2,allow_pickle=True)
-    # Check if the files have the same keys
-    keys1 = set(file1.files)
-    keys2 = set(file2.files)
-
-    if keys1 != keys2:
-        print("Files have different keys")
+def compare_trellis_matrices(matrix_a, matrix_b):
+    if len(matrix_a) != len(matrix_b):
+        print("Number of time steps in the two trellis matrices is different.")
         return
 
-    for key in keys1:
-        arr1 = file1[key]
-        arr2 = file2[key]
-
-        # Compare shapes
-        if arr1.shape != arr2.shape:
-            print(f"Different shapes for key {key}: {arr1.shape} vs {arr2.shape}")
-            continue
-
-        # Compare values
-        if np.array_equal(arr1, arr2):
-            print(f"Arrays are equal for key {key}")
-        else:
-            for i in range(arr1.shape[0]):
-                for j in range(arr1.shape[1]):
-                    if arr1[i][j] != arr2[i][j]:
-                        print(f"Arrays are different for key {key}, index: i:{i}, j:{j}, computed: {arr1[i][j]},expected: {arr2[i][j]}")
-    file1.close()
-    file2.close()
-
-
-
+    for t in range(len(matrix_a)):
+        if not np.array_equal(matrix_a[t], matrix_b[t]):
+            print(f"Time Step {t}:")
+            print("Matrix A:")
+            print(matrix_a[t])
+            print("Matrix B:")
+            print(matrix_b[t])
+            print()
 
 def main():
+    file_path_a = input("Enter the file path for trellis matrix A: ")
+    file_path_b = input("Enter the file path for trellis matrix B: ")
 
-    input_file_path = sys.argv[1]
-    correct_file_path = sys.argv[2]
+    trellis_a = load_trellis(file_path_a)
+    trellis_b = load_trellis(file_path_b)
 
-    compare_npz('output.npz', correct_file_path)
+    if trellis_a is not None and trellis_b is not None:
+        compare_trellis_matrices(trellis_a, trellis_b)
+        print("Comparison complete.")
 
 if __name__ == "__main__":
     main()

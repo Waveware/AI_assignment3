@@ -1,275 +1,107 @@
-
-# 2D Robot Localization for AI Assignment 3
-# by A1767895
-
-import argparse
 import numpy as np
-from copy import deepcopy
+import sys
 
-def find_max(nested_list):
-    m = -1.0
-    r = 0; c = 0
-    for row in nested_list:
-        for col in row:
-            if nested_list[r][c] > m:
-                m = nested_list[r][c]
-                position = [r, c]
-            c += 1
-        c = 0; r += 1
-    return [m, position] 
+def read_input(file_path):
+    with open(file_path, 'r') as f:
+        lines = f.readlines()
 
-def is_adjacent(x1, y1, x2, y2):
-    x1 += 1; x2 += 1; y1 += 1; y2 += 1
-    if x1 == x2 and y1 == y2:
-        return 0
-    if x1 == x2 and abs(y1-y2) == 1:
-        return 1
-    if y1 == y2 and abs(x1-x2) == 1:
-        return 1
-    return 0
+    # Map size
+    rows, cols = map(int, lines[0].split())
 
-class Context:
-    def __init__(self) -> None:
-        self.dim = None
-        self.map = []
-        self.obs = []   
-        self.error_rate = 0.0
-        self.t0 = []
-        self.tm = []
-        self.em = []
-        self.K = 0 # Traversable points in map
+    # Map data
+    map_data = []
+    for i in range(1, rows + 1):
+        map_data.append(lines[i].strip().split())
+
+    # Number of observations
+    num_observations = int(lines[rows + 1].strip())
+
+    # Observations
+    observations = []
+    for i in range(rows + 2, rows + 2 + num_observations):
+        observations.append(lines[i].strip())
+
+    # Sensor error rate
+    epsilon = float(lines[rows + 2 + num_observations].strip())
+
+    return map_data, observations, epsilon
+
+def get_traversable_positions(map_data):
+    traversable_positions = []
+    for r, row in enumerate(map_data):
+        for c, cell in enumerate(row):
+            if cell == '0':
+                traversable_positions.append((r, c))
+    return traversable_positions
+
+def get_neighbors(map_data, pos):
+    r, c = pos
+    neighbors = []
+    directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+    for dr, dc in directions:
+        nr, nc = r + dr, c + dc
+        if 0 <= nr < len(map_data) and 0 <= nc < len(map_data[0]) and map_data[nr][nc] == '0':
+            neighbors.append((nr, nc))
+    return neighbors
+
+def sensor_model(map_data, pos, reading, epsilon):
+    r, c = pos
+    directions = ['N', 'S', 'W', 'E']
+    actual_obstacles = [
+        (r - 1 < 0 or map_data[r - 1][c] != '0'),
+        (r + 1 >= len(map_data) or map_data[r + 1][c] != '0'),
+        (c - 1 < 0 or map_data[r][c - 1] != '0'),
+        (c + 1 >= len(map_data[0]) or map_data[r][c + 1] != '0')
+    ]
+    reading_obstacles = [d in reading for d in directions]
+    d_it = sum(1 for a, b in zip(actual_obstacles, reading_obstacles) if a != b)
+    return (1 - epsilon) ** (4 - d_it) * epsilon ** d_it
+
+def viterbi(map_data, observations, epsilon):
+    traversable_positions = get_traversable_positions(map_data)
+    K = len(traversable_positions)
+    T = len(observations)
+    num_rows = len(map_data)
+    num_cols = len(map_data[0])
     
-    def parse(self, input):
-        sensor_observations = 0; row = 0; col = 0; observations_count = 0
-        state = ('DIMENSIONS')
-        for line in input:
-            if (state == 'DIMENSIONS'):
-                self.dim = line.split(' ')
-                state = 'MAP'
-                continue
-
-            if (state == 'MAP'):
-                if (row < int(self.dim[0])):
-                    c_row = line.split(' ')
-                    while len(c_row) > int(self.dim[1]):
-                        c_row.pop()
-                    self.map.append(c_row)
-                    row += 1
-                else:
-                    state = 'SENSOR'
-            
-            if (state == 'SENSOR'):
-                sensor_observations = int(line)
-                state = 'OBSERVATIONS'
-                continue
-
-            if (state == 'OBSERVATIONS'):
-                if observations_count < sensor_observations:
-                    self.obs.append(list(line))
-                    observations_count += 1
-                else:
-                    state = 'ERROR_RATE'
-            
-            if (state == 'ERROR_RATE'):
-                self.error_rate = float(line)
-
-    # returns a neighbour list for provided coordinates
-    def neighbours(self, ns, we):
-        nslen = int(self.dim[0])
-        welen = int(self.dim[1])
-        north = 0; south = 0; west = 0; east = 0
-
-        if self.map[ns][we] == 'X':
-            return [-1]
-        
-        # check north
-        if ns > 0:
-            check = self.map[ns-1][we]
-            if check == '0':
-                north = 1
-        
-        # check south
-        if ns < nslen-1: # at the bottom of the map
-            check = self.map[ns+1][we]
-            if check == '0':
-                south = 1
-        
-        # check west
-        if we > 0:
-            check = self.map[ns][we-1]
-            if check == '0':
-                west = 1
-        
-        # check east
-        if we < welen-1:
-            check = self.map[ns][we+1]
-            if check == '0':
-                east = 1
-
-        return [north, south, west, east]
-            
-    # Generate an array of initial probabilities
-    def initial_probabilities(self):
-        
-        # count the number of '0'
-        k_initial = 0
-        for row in self.map:
-            for col in row:
-                if col == '0':
-                    k_initial += 1
-        
-        self.t0 = deepcopy(self.map)
-        i = 0; j = 0
-        self.emission_matrix(0)
-        for row in self.t0:
-            for col in row:
-                if col == '0':
-                    self.t0[i][j] = ( 1.0/k_initial ) * self.em[0][i][j]
-                else:
-                    self.t0[i][j] = 0.0
-                j += 1
-            j = 0
-            i+= 1
-        return
+    # Initialize trellis
+    trellis = np.zeros((T, num_rows, num_cols))
     
-    # probability of a move in each direction
-    def moves(self, ns, we):
-        valid_move = self.neighbours(ns, we)
-
-        total = sum(valid_move)
-        for n in range(len(valid_move)):
-            valid_move[n] = valid_move[n]/total
-        return valid_move
-
-    # Generate a transition matrix of size K x K
-    def transition_matrix(self):
-        i = 0; k = []
-        for row in self.map:
-            j = 0
-            for col in row:
-                if self.map[i][j] == '0':
-                    k.append([i, j])
-                j += 1
-            i += 1
-
-        self.traversable = k; transition_mat = []
-        for from_pos in k:
-            this_transition = []
-            for to_pos in k:
-                this_transition.append(is_adjacent(from_pos[0], from_pos[1], to_pos[0], to_pos[1]))
-            s = sum(this_transition); f = 0
-            for t in this_transition:
-                if s > 0:
-                    this_transition[f] /= s
-                else:
-                    this_transition[f] = 0
-                f += 1
-            print(this_transition)
-            transition_mat.append(this_transition)
-        
-        self.tm = transition_mat
-        return 
+    # Uniform initial probability
+    initial_prob = 1 / K
     
-    def get_transition(self, ns, we):
-        if [ns , we] in self.traversable:
-            return self.traversable.index([ns,we])
-        return 0
+    for pos in traversable_positions:
+        r, c = pos
+        trellis[0, r, c] = initial_prob * sensor_model(map_data, pos, observations[0], epsilon)
     
-    # Generate an emission matrix of 
-    def emission_matrix(self, t):
-        em_mat = np.ndarray([int(self.dim[0]), int(self.dim[1])], dtype=float) # float
-        em_mat = em_mat.tolist()
-        # [(1-error)^(4 - d_it)] * error^(d_it)
-        i = 0; j = 0
-        for row in em_mat:
-            for col in row:
-                # denotes the number of directions are reporting erroneous values
-                d_it = 0
-                possible = self.neighbours(i, j)
-                
-                for p in range(len(possible)):
-                    if possible[p] == int(self.obs[t][p]):
-                        continue
-                    else:
-                        d_it += 1
-                sensor_correct_prob = (1-self.error_rate) ** (4 - d_it)
-                directional_error_rate = self.error_rate ** (d_it)
-                em_mat[i][j] = sensor_correct_prob * directional_error_rate
-                j += 1
-            j = 0; i += 1
-        self.em.append(em_mat) 
-        return
+    # Viterbi forward algorithm
+    for t in range(1, T):
+        for pos in traversable_positions:
+            r, c = pos
+            max_prob = 0
+            for neighbor in get_neighbors(map_data, pos):
+                nr, nc = neighbor
+                trans_prob = 1 / len(get_neighbors(map_data, neighbor))
+                prob = trellis[t - 1, nr, nc] * trans_prob * sensor_model(map_data, pos, observations[t], epsilon)
+                if prob > max_prob:
+                    max_prob = prob
+            trellis[t, r, c] = max_prob
+    
+    return trellis
 
-    def print(self) -> None:
-        print('Dimensions: ' + str(self.dim))
-        for row in self.map:
-            print(row)
-        print('Sensor Observations Count: NSWE' + str(len(self.obs)))
-        for observe in self.obs:
-            print(observe)
-        print('Error rate: '+ str(self.error_rate))
+def save_trellis(trellis):
+    maps = [trellis[t] for t in range(trellis.shape[0])]
+    np.savez("output.npz", *maps)
 
 def main():
-##### Take input
-    parser = argparse.ArgumentParser()
-    parser.add_argument('filename', type=argparse.FileType('r'))
-    args = parser.parse_args()
-    raw = args.filename.read()
-    input = raw.split('\n')
-    m = Context()
-    m.parse(input)
-    m.print()
-
-    view = 2
-    if view == 1:
-        for row in range(len(m.map)):
-            for col in range(len(m.map[0])):
-                print(m.neighbours(row, col), end=' ')
-            print('')
-
-    m.initial_probabilities()
-    if view == 2:
-        for i in range(int(m.dim[0])):
-            print(m.t0[i])
-
-    m.transition_matrix()
-    # trellis[s,t] = trellis[k, t-1] * transition[k,i] * emission[i, observation at t]
+    if len(sys.argv) != 2:
+        print("Usage: python viterbi.py [input]")
+        sys.exit(1)
     
-    trellis = [m.t0]
-    max_p, pos_max = find_max(m.t0)
-
-    print("Shape of t0: " + str(np.shape(trellis)))
-    print("Shape of em: " + str(np.shape(m.em)))
-    print("Shape of tm: " + str(np.shape(m.tm)))
-    print(m.tm)
-
-    time = 1
-    for observation in range(len(m.obs) - 1):
-        next_trellis = []
-        max_p, pos_max = find_max(trellis[time-1])
-        transition = m.tm[m.get_transition(pos_max[0], pos_max[1])]
-        m.emission_matrix(time) # m.em
-
-        for row in range(int(m.dim[0])):
-            row_trellis = []
-            for col in range(int(m.dim[1])):
-                #print('=========== ' + str(row) + ' ' + str(col)  + ' ===========')
-                tindex = m.get_transition(row, col)
-                #print(str(tindex) + ': ' +str(transition[tindex]))
-                eq = max_p * transition[tindex] * m.em[time][row][col]
-                
-                row_trellis.append(eq)
-            next_trellis.append(row_trellis)   
-        trellis.append(next_trellis)
-        time += 1
-
-    ar = 0
-    for array in trellis:
-        trellis[ar] = np.matrix(array)
-        print('TIME STAMP: ' + str(ar))
-        ar += 1
-    
-    np.savez("output.npz", *trellis)
+    input_file = sys.argv[1]
+    map_data, observations, epsilon = read_input(input_file)
+    trellis = viterbi(map_data, observations, epsilon)
+    save_trellis(trellis)
 
 if __name__ == "__main__":
     main()
